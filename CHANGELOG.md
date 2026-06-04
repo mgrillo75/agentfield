@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.89-rc.2] - 2026-06-04
+
+
+### Chores
+
+- Chore(deps): bump react-router (#615)
+
+Bumps the npm_and_yarn group with 1 update in the /control-plane/web/client directory: [react-router](https://github.com/remix-run/react-router/tree/HEAD/packages/react-router).
+
+
+Updates `react-router` from 7.14.0 to 7.16.0
+- [Release notes](https://github.com/remix-run/react-router/releases)
+- [Changelog](https://github.com/remix-run/react-router/blob/main/packages/react-router/CHANGELOG.md)
+- [Commits](https://github.com/remix-run/react-router/commits/react-router@7.16.0/packages/react-router)
+
+---
+updated-dependencies:
+- dependency-name: react-router
+  dependency-version: 7.16.0
+  dependency-type: indirect
+  dependency-group: npm_and_yarn
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com> (eec4fbe)
+
+- Chore(deps): bump aiohttp (#614)
+
+---
+updated-dependencies:
+- dependency-name: aiohttp
+  dependency-version: 3.14.0
+  dependency-type: direct:production
+  dependency-group: uv
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com> (f711c78)
+
 ## [0.1.89-rc.1] - 2026-06-04
 
 
