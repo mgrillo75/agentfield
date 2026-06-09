@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.90] - 2026-06-09
+
+
+### Chores
+
+- Chore: add .github/github-buddy.yml with CLA sweep config (#633)
+
+Pins the CLA status context to "license/cla" so github-buddy's
+cla_reminder_sweep reads this repo's hosted cla-assistant.io commit
+status correctly. This differs from github-buddy's own repo, which uses
+the self-hosted contributor-assistant action (a check-run named "cla").
+
+Only takes effect once the repo is added to the GITHUB_BUDDY_CLA_REPOS
+roster on the github-buddy deployment.
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com> (49f9a21)
+
 ## [0.1.90-rc.3] - 2026-06-08
 
 
