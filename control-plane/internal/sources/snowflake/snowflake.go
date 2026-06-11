@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -131,8 +132,8 @@ func (s *source) Validate(raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	if c.AccountURL == "" || !(strings.HasPrefix(c.AccountURL, "https://") || strings.HasPrefix(c.AccountURL, "http://")) {
-		return errors.New("snowflake: account_url must be an http(s) URL")
+	if _, err := validateAccountURL(c.AccountURL); err != nil {
+		return err
 	}
 	if c.IntervalSeconds < 5 {
 		return errors.New("snowflake: interval_seconds must be at least 5")
@@ -186,6 +187,21 @@ func validateReadOnlySQL(sql string) error {
 	default:
 		return fmt.Errorf("snowflake: custom query poll sql must start with SELECT or WITH, got %s", first)
 	}
+}
+
+func validateAccountURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return "", errors.New("snowflake: account_url must be an HTTPS Snowflake account URL")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("snowflake: account_url must not include a path, query, or fragment")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "snowflakecomputing.com" && !strings.HasSuffix(host, ".snowflakecomputing.com") {
+		return "", errors.New("snowflake: account_url host must end with snowflakecomputing.com")
+	}
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 func (s *source) Run(ctx context.Context, raw json.RawMessage, secret string, emit func(sources.Event)) error {
@@ -293,6 +309,10 @@ type columnMeta struct {
 
 func (c *sqlAPIClient) Execute(ctx context.Context, cfg config, token, statement string) (statementResponse, error) {
 	var out statementResponse
+	accountURL, err := validateAccountURL(cfg.AccountURL)
+	if err != nil {
+		return out, err
+	}
 	payload, err := json.Marshal(statementRequest{
 		Statement: statement,
 		Timeout:   cfg.TimeoutSeconds,
@@ -304,7 +324,7 @@ func (c *sqlAPIClient) Execute(ctx context.Context, cfg config, token, statement
 	if err != nil {
 		return out, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.AccountURL+"/api/v2/statements", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, accountURL+"/api/v2/statements", bytes.NewReader(payload))
 	if err != nil {
 		return out, err
 	}
@@ -340,6 +360,10 @@ func (c *sqlAPIClient) Execute(ctx context.Context, cfg config, token, statement
 
 func (c *sqlAPIClient) pollStatement(ctx context.Context, cfg config, token string, status statementResponse) (statementResponse, error) {
 	var out statementResponse
+	accountURL, err := validateAccountURL(cfg.AccountURL)
+	if err != nil {
+		return out, err
+	}
 	if status.StatementHandle == "" {
 		return out, errors.New("snowflake: async SQL response missing statementHandle")
 	}
@@ -361,7 +385,7 @@ func (c *sqlAPIClient) pollStatement(ctx context.Context, cfg config, token stri
 			return out, ctx.Err()
 		case <-time.After(time.Second):
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.AccountURL+statusURL, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, accountURL+statusURL, nil)
 		if err != nil {
 			return out, err
 		}

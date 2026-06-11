@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestValidateRejectsMalformedConfigAndBoundaries(t *testing.T) {
 
 func TestValidateCustomQueryAllowsReadOnlySQL(t *testing.T) {
 	for _, sql := range []string{"SELECT * FROM EVENTS", "WITH recent AS (SELECT 1) SELECT * FROM recent"} {
-		raw := `{"account_url":"https://acct","mode":"custom_query_poll","sql":` + strconvQuote(sql) + `}`
+		raw := `{"account_url":"https://acct.snowflakecomputing.com","mode":"custom_query_poll","sql":` + strconvQuote(sql) + `}`
 		if err := (&source{}).Validate([]byte(raw)); err != nil {
 			t.Fatalf("Validate(%s) = %v", sql, err)
 		}
@@ -139,7 +140,7 @@ func TestPollOnceCallsSnowflakeSQLAPIAndEmitsEvents(t *testing.T) {
 	defer server.Close()
 
 	cfg, err := parseConfig([]byte(`{
-		"account_url":"` + server.URL + `",
+			"account_url":"https://acct.snowflakecomputing.com",
 		"database":"OBSERVABILITY",
 		"schema":"AGENTFIELD",
 		"table":"AGENTFIELD_EVENTS",
@@ -152,7 +153,7 @@ func TestPollOnceCallsSnowflakeSQLAPIAndEmitsEvents(t *testing.T) {
 	}
 
 	var emitted []sources.Event
-	next, err := (&source{}).pollOnce(context.Background(), &sqlAPIClient{httpClient: server.Client()}, cfg, "pat-secret", "", func(e sources.Event) {
+	next, err := (&source{}).pollOnce(context.Background(), &sqlAPIClient{httpClient: snowflakeTestHTTPClient(t, server)}, cfg, "pat-secret", "", func(e sources.Event) {
 		emitted = append(emitted, e)
 	})
 	if err != nil {
@@ -263,8 +264,8 @@ func TestSQLAPIClientPollsAcceptedStatement(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	res, err := (&sqlAPIClient{httpClient: server.Client()}).Execute(ctx, config{
-		AccountURL: server.URL, TimeoutSeconds: 2,
+	res, err := (&sqlAPIClient{httpClient: snowflakeTestHTTPClient(t, server)}).Execute(ctx, config{
+		AccountURL: "https://acct.snowflakecomputing.com", TimeoutSeconds: 2,
 	}, "pat", "SELECT 1")
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -297,8 +298,8 @@ func TestSQLAPIClientExecuteErrors(t *testing.T) {
 			}))
 			defer server.Close()
 
-			_, err := (&sqlAPIClient{httpClient: server.Client()}).Execute(context.Background(), config{
-				AccountURL: server.URL, TimeoutSeconds: 1,
+			_, err := (&sqlAPIClient{httpClient: snowflakeTestHTTPClient(t, server)}).Execute(context.Background(), config{
+				AccountURL: "https://acct.snowflakecomputing.com", TimeoutSeconds: 1,
 			}, "pat", "SELECT 1")
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("Execute error = %v, want %q", err, tt.wantErr)
@@ -309,14 +310,16 @@ func TestSQLAPIClientExecuteErrors(t *testing.T) {
 
 func TestSQLAPIClientPollStatementErrors(t *testing.T) {
 	client := &sqlAPIClient{}
-	_, err := client.pollStatement(context.Background(), config{TimeoutSeconds: 1}, "pat", statementResponse{})
+	_, err := client.pollStatement(context.Background(), config{
+		AccountURL: "https://acct.snowflakecomputing.com", TimeoutSeconds: 1,
+	}, "pat", statementResponse{})
 	if err == nil || !strings.Contains(err.Error(), "missing statementHandle") {
 		t.Fatalf("missing handle error = %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = client.pollStatement(ctx, config{AccountURL: "https://acct", TimeoutSeconds: 1}, "pat", statementResponse{StatementHandle: "stmt"})
+	_, err = client.pollStatement(ctx, config{AccountURL: "https://acct.snowflakecomputing.com", TimeoutSeconds: 1}, "pat", statementResponse{StatementHandle: "stmt"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("pollStatement canceled error = %v", err)
 	}
@@ -367,4 +370,24 @@ func TestResultToEventsNormalizesValueTypes(t *testing.T) {
 func strconvQuote(v string) string {
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+type rewriteTransport struct {
+	target *url.URL
+}
+
+func (t rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = t.target.Scheme
+	clone.URL.Host = t.target.Host
+	return http.DefaultTransport.RoundTrip(clone)
+}
+
+func snowflakeTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	return &http.Client{Transport: rewriteTransport{target: target}}
 }
