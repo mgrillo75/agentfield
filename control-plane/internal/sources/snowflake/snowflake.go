@@ -23,6 +23,7 @@ const (
 	modeEventTablePoll  = "event_table_poll"
 	modeCustomQueryPoll = "custom_query_poll"
 
+	snowflakeSQLAPIHost    = "snowflakecomputing.com"
 	defaultIntervalSeconds = 30
 	defaultMaxBatchSize    = 100
 	defaultEventIDColumn   = "EVENT_ID"
@@ -215,8 +216,25 @@ func (e snowflakeAccountEndpoint) apiURL(apiPath string) (string, error) {
 	if !strings.HasPrefix(apiPath, "/api/v2/statements") {
 		return "", errors.New("snowflake: SQL API path must stay under /api/v2/statements")
 	}
-	u := url.URL{Scheme: "https", Host: e.host, Path: apiPath}
+	u := url.URL{Scheme: "https", Host: snowflakeSQLAPIHost, Path: apiPath}
 	return u.String(), nil
+}
+
+type snowflakeAccountTransport struct {
+	host string
+	base http.RoundTripper
+}
+
+func (t snowflakeAccountTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	clone := req.Clone(req.Context())
+	u := *clone.URL
+	u.Host = t.host
+	clone.URL = &u
+	return base.RoundTrip(clone)
 }
 
 func statementStatusPath(raw string, handle string) (string, error) {
@@ -315,6 +333,13 @@ type sqlAPIClient struct {
 	httpClient *http.Client
 }
 
+func (c *sqlAPIClient) httpClientFor(account snowflakeAccountEndpoint) *http.Client {
+	if c.httpClient != nil {
+		return c.httpClient
+	}
+	return &http.Client{Transport: snowflakeAccountTransport{host: account.host}}
+}
+
 type statementRequest struct {
 	Statement     string `json:"statement"`
 	Timeout       int    `json:"timeout,omitempty"`
@@ -372,14 +397,8 @@ func (c *sqlAPIClient) Execute(ctx context.Context, cfg config, token, statement
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	httpClient := c.httpClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
+	httpClient := c.httpClientFor(account)
 
-	// account_url is parsed into a Snowflake-only HTTPS endpoint with no path, query, user info, or port before this request is built.
-
-	// codeql[go/request-forgery]
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return out, err
@@ -415,10 +434,7 @@ func (c *sqlAPIClient) pollStatement(ctx context.Context, cfg config, token stri
 	if err != nil {
 		return out, err
 	}
-	httpClient := c.httpClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
+	httpClient := c.httpClientFor(account)
 	deadline := time.Now().Add(time.Duration(cfg.TimeoutSeconds) * time.Second)
 	for {
 		if time.Now().After(deadline) {
@@ -437,9 +453,6 @@ func (c *sqlAPIClient) pollStatement(ctx context.Context, cfg config, token stri
 		req.Header.Set("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN")
 		req.Header.Set("Accept", "application/json")
 
-		// statementURL is built from a Snowflake-only HTTPS endpoint and a relative /api/v2/statements path.
-
-		// codeql[go/request-forgery]
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			return out, err

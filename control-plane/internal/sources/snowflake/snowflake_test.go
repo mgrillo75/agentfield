@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -129,7 +130,7 @@ func TestValidateAccountURLAndAPIURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apiURL(valid): %v", err)
 	}
-	if got != "https://acct.snowflakecomputing.com/api/v2/statements/stmt" {
+	if got != "https://snowflakecomputing.com/api/v2/statements/stmt" {
 		t.Fatalf("apiURL = %q", got)
 	}
 
@@ -182,6 +183,42 @@ func TestStatementStatusPathValidation(t *testing.T) {
 	}
 	if _, err := statementStatusPath("", ""); err == nil {
 		t.Fatal("statementStatusPath missing handle expected error")
+	}
+}
+
+func TestSQLAPIClientDefaultTransportUsesValidatedAccountHost(t *testing.T) {
+	httpClient := (&sqlAPIClient{}).httpClientFor(snowflakeAccountEndpoint{host: "acct.snowflakecomputing.com"})
+	transport, ok := httpClient.Transport.(snowflakeAccountTransport)
+	if !ok {
+		t.Fatalf("Transport = %T, want snowflakeAccountTransport", httpClient.Transport)
+	}
+	if transport.host != "acct.snowflakecomputing.com" {
+		t.Fatalf("transport host = %q", transport.host)
+	}
+}
+
+func TestSnowflakeAccountTransportRewritesHost(t *testing.T) {
+	transport := snowflakeAccountTransport{
+		host: "acct.snowflakecomputing.com",
+		base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host != "acct.snowflakecomputing.com" {
+				t.Fatalf("request host = %q", req.URL.Host)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("{}")),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://snowflakecomputing.com/api/v2/statements/stmt", nil)
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer resp.Body.Close()
+	if req.URL.Host != "snowflakecomputing.com" {
+		t.Fatalf("original request host mutated to %q", req.URL.Host)
 	}
 }
 
@@ -513,4 +550,10 @@ type errorTransport struct{}
 
 func (errorTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("transport down")
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
