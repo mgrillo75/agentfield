@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.94-rc.2] - 2026-06-24
+
+
+### Added
+
+- Feat(harness): canonical dir model, unified permissions, incremental schema (Python) (#689)
+
+Reworks the Python harness directory, permission, and schema-output contracts
+so they are consistent across all four providers and match the Go SDK.
+
+Directory model (#684, #686):
+- project_dir is the canonical agent root; cwd is the process dir. The schema
+  output file always lands inside the agent root — when project_dir is set the
+  runner places it in an isolated temp dir under project_dir (mirrors Go), so
+  providers like OpenCode no longer reject it as an external-directory write.
+- opencode: --dir prefers project_dir over cwd (was inverted, the #684 bug).
+- codex: -C uses project_dir or cwd; added --skip-git-repo-check for non-repo
+  working dirs.
+- gemini: removed the -C flag, which gemini rejects outright ("Unknown
+  argument: C") and crashed every call; the root is now the process cwd.
+- claude-code: SDK cwd uses project_dir or cwd.
+- Terminal schema errors now include effective provider/project_dir/cwd/output.
+
+Permissions (#687):
+- codex: "auto" -> --sandbox workspace-write (was the deprecated --full-auto);
+  "plan" -> --sandbox read-only.
+- gemini: "auto" -> --yolo (was --sandbox, which RESTRICTS execution and was
+  backwards); "plan" -> --approval-mode plan.
+
+Incremental schema (#688):
+- New schema_mode: "single" (default) | "incremental" | "auto".
+- incremental builds the JSON object one top-level field at a time and recovers
+  by patching only the missing/invalid fields instead of a full re-run.
+- auto switches to incremental above the large-schema threshold.
+
+Adds project_dir and schema_mode to app.harness() and HarnessConfig.
+Full harness test coverage for every provider's flag mapping and the
+incremental field-recovery path.
+
+Closes #684
+Closes #686
+Closes #687
+Closes #688 (ff6f043)
+
 ## [0.1.94-rc.1] - 2026-06-24
 
 
