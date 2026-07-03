@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.97-rc.7] - 2026-07-03
+
+
+### Fixed
+
+- Fix(agentfield): add test for issue #589 (#703)
+
+* fix(agentfield): add test for issue #589
+
+Ref: #589
+Signed-off-by: Jay <sallomondiei@gmail.com>
+
+* fix: replace stub with real regression test for OpenRouter video download auth
+
+* test(#589): relocate regression test into sdk/python/tests so CI collects it
+
+The regression test for #589 was committed at repo-root tests/test_issue_589.py.
+The sdk-python CI workflow only triggers on sdk/python/**, so the test never ran,
+and 'import agentfield' does not resolve from repo root. Move it under
+sdk/python/tests/ where CI collects it and the package import resolves. Also drop
+an unused 'import os' flagged by ruff.
+
+Refs #703, #589
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---------
+
+Signed-off-by: Jay <sallomondiei@gmail.com>
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com> (7b6f4b8)
+
 ## [0.1.97-rc.6] - 2026-07-03
 
 
