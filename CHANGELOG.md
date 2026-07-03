@@ -6,6 +6,161 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.97-rc.6] - 2026-07-03
+
+
+### Added
+
+- Feat(cli): af install/run for agent nodes — encrypted secrets, env prompting, node-to-node deps (#692)
+
+* feat(cli): encrypted secret store + manifest entrypoint/env resolution for agent nodes
+
+Adds the foundation for making 'af install'/'af run' usable for real agent
+nodes (which start via 'python -m pkg.app' and have no top-level main.py):
+
+- internal/packages/secrets.go: encrypted at-rest secret store. KeyfileProvider
+  keeps a random 32-byte key at ~/.agentfield/keyring/master.key (0600);
+  SecretStore encrypts global.enc + <node>.enc via AES-256-GCM, with node scope
+  overriding global so shared keys (API tokens) are entered once.
+- internal/packages/env_resolver.go: resolves declared env vars in order
+  process-env -> node store -> global store -> manifest default -> prompt
+  (hidden for type:secret), persisting prompted secrets encrypted. Injected only
+  into the child process; never written to disk in plaintext.
+- installer.go: manifest gains entrypoint{start,healthcheck}, dependencies.nodes,
+  and per-var scope. Validation accepts entrypoint.start instead of requiring
+  main.py; package copy excludes .git/venv/.env/__pycache__.
+- runner.go: launches via manifest entrypoint, exports AGENTFIELD_SERVER (the
+  var the SDK actually reads) alongside legacy AGENTFIELD_SERVER_URL, honors the
+  manifest healthcheck path, and resolves env via the secret store.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* feat(cli): af secrets command + node-to-node dependency install/start
+
+- af secrets set/ls/rm manages the encrypted store (hidden input for set,
+  masked listing, global + --node scopes).
+- install resolves dependencies.nodes recursively (af://registry/<name>
+  -> github.com/Agent-Field/<name>, or git URLs), skipping already-installed
+  nodes to break cycles.
+- af run brings up a node's installed node-dependencies first, in dependency
+  order, with cycle protection.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* docs: agent-node install/run/secrets guide
+
+- docs/installing-agent-nodes.md: full guide to af install/run, the
+  agentfield-package.yaml manifest (entrypoint, node deps, user_environment),
+  the encrypted runtime-only secrets model, and af secrets.
+- cli-toolkit.md reference: document af install, af run, af secrets (+ embedded
+  skill_data copy synced).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* fix(cli): apply install/run fixes to the active service layer
+
+Local end-to-end verification revealed the CLI's install/run path goes through
+internal/core/services (DefaultPackageService/DefaultAgentService), which
+duplicated — and so bypassed — the fixes previously made in internal/packages.
+'af install' on an entrypoint-only node still failed with 'main.py not found',
+and 'af run' still exported only AGENTFIELD_SERVER_URL and loaded plaintext .env.
+
+- package_service: validate/parse/copy now delegate to the shared
+  packages.ValidatePackage / ParsePackageMetadata / ShouldSkipCopy (entrypoint
+  accepted, junk excluded). Install guidance points at 'af secrets set'.
+- agent_service: buildProcessConfig launches via the manifest entrypoint,
+  exports AGENTFIELD_SERVER, resolves env via the encrypted secret store
+  (prompting for missing required), honors the manifest healthcheck path, and
+  drops the plaintext .env loader. RunAgent starts node deps first with a
+  threaded cycle guard.
+- packages: export ValidatePackage + ShouldSkipCopy as the single source of truth.
+- tests updated to the new contract (entrypoint validation, store-based env
+  injection instead of .env).
+
+Verified end-to-end: install entrypoint-only node -> missing-secret errors
+cleanly -> af secrets set -> af run injects AGENTFIELD_SERVER + the stored
+secret + manifest default into the process (confirmed via the node's env dump).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* fix(cli): start node dependencies before allocating the parent's port
+
+Local multi-agent verification showed a port collision: dependencies were
+started after the parent allocated its port, so the parent's port (not yet
+bound) was handed out again to a dependency, which then failed to bind. Move
+dependency startup ahead of port allocation so each dependency fully binds its
+own port first.
+
+Verified end-to-end against a live local control plane: 'af run greeter-node'
+auto-starts its dependency echo-node (distinct ports 8002/8003), both register,
+both reasoners execute through the control plane, and an already-running
+dependency is left untouched (same PID).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* test(cli): cover node-dependency resolution and ordered-start helpers
+
+Unit tests for resolveNodeRef, installedNames, installNodeDependencies
+(skip-already-installed), and startNodeDependencies (not-installed warning +
+already-running skip) in both the service and packages layers — covering the
+new patch lines and pinning the behaviors verified end-to-end.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* fix(cli): git/github install validation + pyproject dependency install
+
+End-to-end install testing against the published node repos surfaced two gaps:
+
+1. The git and GitHub install paths (git.go/github.go findPackageRoot) were a
+   third and fourth copy of the 'main.py required' check, so 'af install
+   <github-url>' failed for entrypoint-only nodes (no top-level main.py) such as
+   SWE-AF and cloudsecurity-af. Both now delegate to the shared ValidatePackage
+   (accepts a manifest entrypoint.start).
+2. Dependency install only ran for requirements.txt projects, so pyproject-only
+   nodes (pr-af, sec-af, cloudsecurity-af) installed with no venv and no deps.
+   Dependency install is now a single shared InstallPythonDependencies that also
+   runs 'pip install .' for pyproject.toml/setup.py projects.
+
+Verified: all five published node repos now install from their GitHub URLs; a
+pyproject node (sec-af) builds its venv and 'pip install .' succeeds, with
+sec_af + agentfield importable from the node's venv. (Nodes that declare
+requires-python >=3.11 need a matching interpreter on PATH — pip reports this
+clearly.) Tests updated for the new validation contract; new unit tests cover
+the pyproject branch and entrypoint-accepting findPackageRoot.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* test(#692): add patch-coverage tests for node install secrets/env/runner
+
+The coverage-summary check was failing the patch-coverage gate: touched
+lines in the af-node-install feature sat at 59% vs the 80% floor in
+.coverage-gate.toml. This adds behavior-focused Go tests for the
+previously untested error and lifecycle paths:
+
+- internal/cli/secrets.go: full `af secrets set/ls/rm` command tree
+  (global + node scope, stdin value, empty-value rejection, idempotent
+  remove) — previously had no test file.
+- internal/packages/secrets.go: KeyfileProvider generation/empty/
+  unreadable/unwritable key paths, provider-error propagation, empty
+  scope = global, load/save error propagation across Set/Delete/List/Get,
+  and ListAll (empty, non-.enc skip, corrupt-scope, read-dir errors).
+- internal/packages/env_resolver.go: store-read failures, optional
+  omission, prompter errors, skipped prompts, invalid/too-many validation
+  attempts, persist failure, and TTYPrompter plain-line reads.
+- internal/packages/runner.go: resolveEnvironment (declared/undeclared),
+  startAgentNodeProcess env assembly + manifest fallback, node-dependency
+  bring-up (not-installed / cycle-guard / already-running / recursive
+  start), and waitForAgentNode default health path.
+
+Patch coverage on touched lines: 59% -> 81% (gate passes at the 80%
+floor). No production code changed; tests only.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com> (753cba7)
+
 ## [0.1.97-rc.5] - 2026-07-03
 
 
