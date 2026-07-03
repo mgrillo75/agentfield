@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.97-rc.2] - 2026-07-03
+
+
+### Chores
+
+- Chore(deps): bump golang.org/x/net (#710)
+
+Bumps the go_modules group with 1 update in the /control-plane directory: [golang.org/x/net](https://github.com/golang/net).
+
+
+Updates `golang.org/x/net` from 0.52.0 to 0.55.0
+- [Commits](https://github.com/golang/net/compare/v0.52.0...v0.55.0)
+
+---
+updated-dependencies:
+- dependency-name: golang.org/x/net
+  dependency-version: 0.55.0
+  dependency-type: indirect
+  dependency-group: go_modules
+...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com> (bd5f8cc)
+
 ## [0.1.97-rc.1] - 2026-07-02
 
 
