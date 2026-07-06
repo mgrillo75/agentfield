@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.98-rc.4] - 2026-07-06
+
+
+### Added
+
+- Feat(sdk-go): production-harden serverless agent nodes (Lambda-ready, auth-visible, restart-safe) (#719)
+
+A deployment_type:"serverless" node is a pull-registered, stateless HTTP
+handler - the same request/response contract AWS Lambda (via a Function
+URL), Cloud Run, Cloud Functions 2nd gen, and Fly.io all speak. That means
+the same Go reasoner should drop into any of them with zero SDK changes,
+but four real gaps broke that promise for a first-time adopter:
+
+- The Go SDK had no /status endpoint, so the control plane's health
+  monitor 404s polling it; serverless nodes (no heartbeat by design) have
+  nothing to mask this and flip to Inactive on the first check.
+- HealthMonitor.RecoverFromDatabase re-subjects every node, serverless
+  included, to that polling after a control-plane restart - the one time
+  live registration never does.
+- Origin auth defaults off with no visibility into which registered nodes
+  have it on - a Lambda Function URL is public by default.
+- The bundled serverless example's relay reasoner forwarded its payload
+  under the wrong key, silently dropping the message on every parent-to-
+  child hop.
+
+Closes Agent-Field/agentfield#718. (e16987a)
+
 ## [0.1.98-rc.3] - 2026-07-06
 
 
