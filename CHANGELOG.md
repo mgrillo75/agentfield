@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.100-rc.1] - 2026-07-07
+
+
+### Added
+
+- Feat(cli): require_one_of env-var groups for agent nodes (#729)
+
+* feat(cli): require_one_of env-var groups for agent nodes
+
+Agent-node manifests could only mark each variable independently required or
+optional. Nodes that accept alternatives — e.g. SWE-AF works with either an
+Anthropic key OR an OpenRouter key — had no way to say "at least one of these";
+you had to over-require one provider or make both optional and fail at runtime.
+
+Add a `require_one_of` section: a list of groups, each satisfied when at least
+one of its options resolves (env / secret store / default). On `af run`, an
+unsatisfied group prompts the user to fill in one option (leaving the rest
+blank), validating and persisting it encrypted like any required secret; a
+non-interactive session errors naming the alternatives instead of failing inside
+the node. `af install` surfaces unsatisfied groups the same way it does required
+vars. Required / require_one_of / optional compose in one manifest.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* docs: document require_one_of env-var groups
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* test(cli): cover require_one_of install warnings and group error paths
+
+Add unit coverage for the require_one_of paths flagged by the patch-coverage
+gate: the install-time group warnings in both checkEnvironmentVariables copies,
+envGroupSatisfied, and the group store-read / persist / combined-missing error
+branches. Also propagate store-read errors from resolveGroupFromSources so a
+group option's store failure aborts the resolve, consistent with required and
+optional variables.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com> (468caf0)
+
 ## [0.1.99] - 2026-07-07
 
 ## [0.1.99-rc.1] - 2026-07-07
