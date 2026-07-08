@@ -6,6 +6,89 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.106-rc.1] - 2026-07-08
+
+
+### Added
+
+- Feat: macOS menu-bar tray (af-tray) with launchd auto-start (#725)
+
+* feat(control-plane): add macOS menu-bar tray (af-tray)
+
+Adds `af-tray`, a small separate binary that puts an AgentField icon in
+the macOS menu bar. It polls the control plane's public /health endpoint
+to show running/stopped status, opens the dashboard, and drives the
+control-plane lifecycle (start/stop/restart/start-at-login) via launchd —
+the tray is a controller of an OS service, not a supervisor.
+
+Design/isolation:
+- Separate binary so the systray/CGO dependency never enters the server
+  binary (verified: ./cmd/af has no systray/dbus deps). Containers/headless
+  hosts (Railway/ECS/EC2) never build, install, or run it.
+- Platform-neutral logic (health, launchd plist generation, launchctl arg
+  construction, atomic writes) lives in shared.go with contract tests that
+  run on the Linux CI; the systray loop and launchctl exec calls are
+  darwin-tagged. Non-darwin builds compile a graceful no-op stub.
+- launchd semantics encode the intended behaviour: server uses
+  KeepAlive={SuccessfulExit:false} so a graceful Stop sticks but a crash
+  restarts; tray uses KeepAlive={Crashed:true} so Quit / no-GUI exit never
+  crash-loops; server runs with --open=false under launchd.
+- install is idempotent/convergent (bootstrap + kickstart -k) so a
+  `curl | bash` update force-restarts a stale tray/server onto the new
+  binary with nothing manual.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* feat(install): install macOS tray + auto-start via install.sh
+
+On macOS (production channel) the installer now fetches the separate
+`agentfield-tray-<arch>` binary and delegates .app-bundle + launchd setup
+to `af-tray install` (mirroring how the skill install is delegated to the
+binary). Best-effort throughout: a missing/failed tray never fails the
+overall install, and it is never fetched on Linux/headless/container hosts.
+Opt out with --no-tray or TRAY_MODE=none.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* build(release): build and ship af-tray for darwin
+
+Adds goreleaser build targets for agentfield-tray-darwin-{amd64,arm64}
+(CGO on, macOS only) and includes them in the release matrix on the
+macos-14 runner so the Cocoa/CGO link happens on a real macOS host. The
+binaries are named to match the existing agentfield-* asset convention,
+so the flatten/checksum/upload steps pick them up automatically.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+* test(control-plane): make af-tray dispatch testable and cover shared helpers
+
+Splits the CLI dispatch out of main() into a testable run([]string) int and
+adds unit tests for it plus the non-darwin stubs and the shared helpers
+(serverBinaryPath fallbacks, writeFileAtomic error paths). This lifts the
+control-plane patch coverage on the af-tray files from 66% to ~85%, above the
+80% patch-coverage gate. The darwin-only files are not measured on the Linux
+coverage run; the systray loop / launchctl calls remain covered only by the
+on-device build.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com> (e2bf705)
+
+
+
+### Documentation
+
+- Docs: document installing agent nodes via `af install <repo-url>` (#738)
+
+Add an install snippet to the 'Built With AgentField' section: with a control
+plane running, any first-party node (swe-planner, sec-af, cloudsecurity, pr-af)
+installs with one `af install <github-url>` command, prompts once for shared
+secrets, and its reasoners become callable. Links to docs/installing-agent-nodes.md.
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com> (d9569d1)
+
 ## [0.1.105] - 2026-07-08
 
 ## [0.1.105-rc.1] - 2026-07-08
