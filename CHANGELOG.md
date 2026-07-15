@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.109-rc.5] - 2026-07-15
+
+
+### Added
+
+- Feat(harness): add Python provider preflight (#756)
+
+* feat(harness): add Python provider preflight (#685)
+
+* fix(harness): restore Python 3.10 CI compatibility
+
+* fix(harness): align claude-code doctor spec with Python SDK, trim doc, KeyError fallback
+
+Address the three unresolved review threads on #756:
+
+- docs/harness-providers.md: drop the TypeScript/Go doctor examples — those
+  APIs (agent.harnessDoctor, harness.Doctor) do not exist yet. Document the
+  Python SDK + af CLI surface that actually ships and note TS/Go as planned
+  follow-ups of #685.
+
+- control-plane/internal/cli/harness_doctor.go: the claude-code row now
+  mirrors the Python doctor (_doctor.py::_claude_health). It probes a Python
+  interpreter for the claude_agent_sdk pip package (which bundles its own
+  CLI) instead of looking for a global `claude` binary, and hints
+  `pip install 'agentfield[harness-claude]'` instead of npm. Interpreter
+  candidates (python3/python/py) are run-probed so dead launcher stubs are
+  skipped; issues are wrapper_not_installed / python_not_found.
+
+- sdk/python/agentfield/harness/_availability.py: provider_unavailable()
+  falls back to a generic ProviderSpec via .get() so providers without a
+  PROVIDER_SPECS entry (claude-code, or any future provider) raise the
+  helpful HarnessProviderUnavailable instead of a bare KeyError. Regression
+  test added for both provider_unavailable and ensure_cli_available.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Fable 5 <noreply@anthropic.com> (ea8aaad)
+
 ## [0.1.109-rc.4] - 2026-07-15
 
 
