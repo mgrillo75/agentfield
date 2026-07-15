@@ -6,6 +6,135 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 <!-- changelog:entries -->
 
+## [0.1.109-rc.4] - 2026-07-15
+
+
+### Added
+
+- Feat(sdk-python): accept scope kwargs on memory set/get/delete and reconcile memory.search (#707)
+
+* feat(sdk-python): accept scope kwargs on memory set/get/delete and correct README search API
+
+Add optional scope/scope_id kwargs to app.memory.set/get/delete so the
+developer-facing MemoryInterface matches what humans and LLMs naturally guess
+(app.memory.set(key, data, scope="global")) and mirrors the TypeScript SDK,
+which already accepts scope positionally. scope=None keeps today's hierarchical
+behavior unchanged; explicit scopes route to the existing accessor clients.
+Invalid scopes raise a ValueError listing valid scopes; non-global scopes
+without a scope_id raise a clear ValueError.
+
+No general memory search endpoint exists on the control plane (only
+/api/v1/memory/vector/search, already exposed as similarity_search), so the
+README's advertised app.memory.search(...) is corrected to similarity_search
+and the scope names are corrected from 'agent/run' to 'actor/workflow'.
+
+* fix(memory): allow context-derived explicit scopes
+
+* fix(memory): derive event history scope ids
+
+* feat(sdk-python): extend scope kwargs to memory.similarity_search
+
+Finish the memory-scope DX work for #712: the developer-facing
+MemoryInterface.similarity_search now accepts the same optional
+scope/scope_id kwargs as set/get/delete, dispatching through the shared
+_resolve_scope_target helper. This matches the TypeScript SDK, whose
+searchVector already takes scope/scopeId options. scope=None keeps
+today's behavior exactly.
+
+Also loosen ScopedMemoryClient/ScopedMemoryEventClient scope_id type
+hints to Optional[str] - the context-derived explicit-scope path passes
+None by design - and apply ruff format to memory_events.py.
+
+Verified end-to-end against a local control plane (local mode):
+set/get/delete with scope kwargs across global/session/workflow,
+hierarchical get, accessor-style reads, context-derived scope ids,
+similarity_search with scope="global", and ValueError on invalid
+scopes.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Fable 5 <noreply@anthropic.com> (31a90f2)
+
+- Feat(sdk/ts): add trigger types, factories, and registration plumbing (#743)
+
+* feat(sdk/ts): add trigger types, factories, and registration plumbing (#509)
+
+Implement the foundation layer for the TypeScript SDK trigger system,
+bringing it to parity with the Python SDK's triggers.py.
+
+New files:
+- src/triggers/types.ts — TriggerContext, EventTriggerSpec,
+  ScheduleTriggerSpec, TriggerBinding interfaces
+- src/triggers/factories.ts — eventTrigger() + scheduleTrigger() factory
+  functions + triggerToPayload() wire serializer
+- src/triggers/index.ts — public barrel re-exports
+
+Modified files:
+- src/types/reasoner.ts — add triggers?: TriggerBinding[] to
+  ReasonerOptions
+- src/agent/Agent.ts — reasonerDefinitions() now serializes triggers
+  array and auto-sets accepts_webhook=true when triggers are present
+- src/index.ts — re-export triggers module
+
+Tests:
+- 14 tests covering types, factories, async transform rejection,
+  payload serialization, and registration integration
+
+Fixes #509
+
+* fix(sdk/ts): send accepts_webhook as string not bool
+
+The control plane's ReasonerDefinition.accepts_webhook is typed as
+*string ("true" / "false" / "warn") and rejects bool literals with a 400.
+This was causing POST /api/v1/nodes/register to fail with:
+
+  json: cannot unmarshal bool into Go struct field
+  ReasonerDefinition.reasoners.accepts_webhook of type string
+
+Fix: emit "true" string when triggers are present, omit field (omitempty)
+when no triggers are declared — matching the Python SDK normalization in
+agent.py lines 914-926.
+
+* review: mark TriggerContext @experimental, omit empty triggers from wire
+
+Address review feedback:
+- TriggerContext: add @experimental tag noting runtime wiring lands in #510
+- Registration payload: omit triggers[] and accepts_webhook entirely when
+  no triggers are declared, keeping the wire format stable for older
+  control planes that don't know about trigger fields
+
+* feat(sdk/ts): 3-state acceptsWebhook on ReasonerOptions, parity with Python
+
+Replace the hardcoded 2-state webhook opt-in (accepts_webhook="true" only
+when triggers exist, otherwise absent) with the Python SDK's 3-state model:
+
+- ReasonerOptions gains acceptsWebhook?: boolean | 'warn'. An explicit
+  author value always wins, so a reasoner with triggers can opt OUT via
+  acceptsWebhook: false (mirrors resolve_reasoner_metadata in
+  sdk/python/agentfield/decorator_metadata.py).
+- Trigger auto-opt-in (true) is now the fallback, not the only path.
+- Trigger-less reasoners register with the explicit default "warn"
+  instead of omitting the field, matching Python's _entry_to_metadata.
+- Serialization normalizes to the wire strings "true"/"false"/"warn" —
+  the control plane types AcceptsWebhook as *string.
+
+Adds tests for explicit false-with-triggers (opt-out), explicit true,
+explicit 'warn' overriding the auto-set, default-with-triggers auto
+opt-in, trigger-less "warn" default, and string-typed serialization in
+the registration payload.
+
+Resolves review thread on PR #743.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: Abir Abbas <abirabbas1998@gmail.com>
+Co-authored-by: Claude Fable 5 <noreply@anthropic.com> (8c08186)
+
 ## [0.1.109-rc.3] - 2026-07-15
 
 
